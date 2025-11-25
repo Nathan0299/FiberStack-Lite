@@ -20,14 +20,14 @@ FiberStack-Lite is a lightweight, scalable monitoring solution designed to track
 ### Run Locally
 ```bash
 # Clone repo
-git clone https://github.com/your-org/FiberStack-Lite.git
+git clone https://github.com/Nathan0299/FiberStack-Lite.git
 cd FiberStack-Lite
 
 # Start development stack
 docker-compose -f fiber-deploy/docker-compose.dev.yml up -d
 ```
 
-Access the dashboard at `http://localhost:3000`.
+Access the dashboard at `http://localhost:4000`.
 
 ---
 
@@ -61,9 +61,9 @@ FiberStack-Lite consists of 6 microservices:
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1** | Architecture & Foundation | ✅ Complete |
-| **Phase 2** | Core Services (API, DB, Probe) | 🚧 Planned |
-| **Phase 3** | Sandbox & Testing | 📅 Planned |
-| **Phase 4** | Dashboard & Visualization | 📅 Planned |
+| **Phase 2** | Core Services (API, DB, Probe) | ✅ Complete |
+| **Phase 3** | Sandbox & Testing | ✅ Complete |
+| **Phase 4** | Dashboard & Visualization | 🚧 Next |
 | **Phase 5** | Deployment & Containerization | 📅 Planned |
 | **Phase 6** | MVP Validation | 📅 Planned |
 | **Phase 7** | Public Launch | 📅 Planned |
@@ -72,4 +72,10 @@ FiberStack-Lite consists of 6 microservices:
 
 ## 📄 License
 
-Proprietary - Internal Use Only
+MIT License
+
+## 📧 Contact
+
+Project lead: Nathaniel Lamptey  
+Email: nathaniellamptey17@gmail.com  
+GitHub: @Nathan0299
