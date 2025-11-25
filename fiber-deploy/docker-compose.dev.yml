@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  fiber-api:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    container_name: fiber-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../fiber-api:/app/fiber-api
+      - ../fiber-logging:/app/fiber-logging
+    environment:
+      - ENV=dev
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=timescaledb
+      - DB_PASS=postgres
+      - DB_USER=postgres
+      - DB_NAME=fiberstack
+    depends_on:
+      - redis
+      - timescaledb
+    command: uvicorn fiber-api.src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  fiber-etl:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    container_name: fiber-etl
+    volumes:
+      - ../fiber-etl:/app/fiber-etl
+      - ../fiber-logging:/app/fiber-logging
+      - ../fiber-db:/app/fiber-db
+    environment:
+      - ENV=dev
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=timescaledb
+      - DB_PASS=postgres
+      - DB_USER=postgres
+      - DB_NAME=fiberstack
+      - ELASTIC_URL=http://elasticsearch:9200
+    depends_on:
+      - redis
+      - timescaledb
+      # - elasticsearch
+    command: python -m fiber-etl.src.worker
+
+  timescaledb:
+    image: timescale/timescaledb:2.11.2-pg15
+    container_name: fiber-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fiberstack
+    volumes:
+      - fiber_db_data:/var/lib/postgresql/data
+      - ../fiber-db/schemas:/docker-entrypoint-initdb.d
+
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+  #   container_name: fiber-es
+  #   ports:
+  #     - "9200:9200"
+  #   environment:
+  #     - discovery.type=single-node
+  #     - xpack.security.enabled=false
+  #   volumes:
+  #     - fiber_es_data:/usr/share/elasticsearch/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: fiber-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - fiber_redis_data:/data
+
+  fiber-dashboard:
+    image: node:18-alpine
+    container_name: fiber-dashboard
+    working_dir: /app
+    ports:
+      - "4000:3000"
+    volumes:
+      - ../fiber-dashboard:/app
+    command: sh -c "npm install && npm start"
+
+volumes:
+  fiber_db_data:
+  fiber_es_data:
+  fiber_redis_data:

@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  timescale:
+    image: timescale/timescaledb:latest-pg14
+    container_name: fs-timescale-sandbox
+    environment:
+      POSTGRES_DB: ${TS_DB}
+      POSTGRES_USER: ${TS_USER}
+      POSTGRES_PASSWORD: ${TS_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./volumes/timescale:/var/lib/postgresql/data
+    networks:
+      - fs-sandbox
+
+  elastic:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.2
+    container_name: fs-elastic-sandbox
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      xpack.security.enabled: "false"
+    ports:
+      - "9201:9200"
+    networks:
+      - fs-sandbox
+
+  fiber-api:
+    build:
+      context: ../../fiber-api
+      dockerfile: ../../fiber-deploy/docker/Dockerfile.api
+    container_name: fs-api-sandbox
+    env_file:
+      - ./configs/env.sandbox
+      - ./configs/env.api
+    depends_on:
+      - timescale
+      - elastic
+    ports:
+      - "8081:8080"
+    networks:
+      - fs-sandbox
+
+  fiber-etl:
+    build:
+      context: ../../fiber-etl
+      dockerfile: ../../fiber-deploy/docker/Dockerfile.etl
+    container_name: fs-etl-sandbox
+    env_file:
+      - ./configs/env.sandbox
+      - ./configs/env.etl
+    depends_on:
+      - fiber-api
+      - timescale
+    networks:
+      - fs-sandbox
+
+  fiber-probe:
+    build:
+      context: ../../fiber-probe
+      dockerfile: ../../fiber-deploy/docker/Dockerfile.probe
+    container_name: fs-probe-sandbox
+    env_file:
+      - ./configs/env.sandbox
+      - ./configs/env.probe
+    depends_on:
+      - fiber-api
+    networks:
+      - fs-sandbox
+
+  fiber-dashboard:
+    build:
+      context: ../../fiber-dashboard
+      dockerfile: ../../fiber-deploy/docker/Dockerfile.dashboard
+    container_name: fs-dashboard-sandbox
+    env_file:
+      - ./configs/env.dashboard
+    ports:
+      - "8080:8080"
+    depends_on:
+      - fiber-api
+    networks:
+      - fs-sandbox
+
+networks:
+  fs-sandbox:
+    driver: bridge
