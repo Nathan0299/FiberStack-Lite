@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  fiber-probe:
+    image: fiberstack/probe:stable
+    platform: linux/arm64
+    network_mode: "host" # Use host networking for accurate latency
+    restart: always
+    environment:
+      - NODE_ID=${NODE_ID}
+      - API_ENDPOINT=${API_URL}
+      - API_FAILOVER=${API_FAILOVER_URL}
+      - PROBE_BUFFER_SIZE=1000 # Resume-ability
+      - PROBE_INTERVAL=30
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Automatic Updates (Pull stable tag)
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup fiber-probe
+    restart: always
+    environment:
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_REVIVE_STOPPED=true

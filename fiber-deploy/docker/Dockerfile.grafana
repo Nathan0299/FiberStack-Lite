@@ -1,0 +1,11 @@
+FROM grafana/grafana:10.2.0
+
+# 1. Immutable Config Strategy
+# We bake dashboards and datasources into the image.
+# Using --chown=472:0 ensures the 'grafana' user (UID 472) can read them.
+COPY --chown=472:0 fiber-deploy/grafana/provisioning /etc/grafana/provisioning
+COPY --chown=472:0 fiber-deploy/grafana/dashboards /etc/grafana/provisioning/dashboards/json
+
+# 2. Security Hardening
+# Explicitly switch to the grafana user to prevent accidental root execution
+USER 472

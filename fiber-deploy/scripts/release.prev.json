@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-01-06T13:12:08Z",
+  "version": "dev",
+  "env": "dev",
+  "images": {
+    "fiber-api": "sha256:c77aa2f0543688fa0d83f49d9e175581c9dbd847b41d7ab15c4169f36ef46783"
+,
+    "fiber-etl": "sha256:94871685a38ddfcbda15d23c13b262d63ab945a54802895aa88c2c4bc97d11ad"
+,
+    "fiber-probe": "sha256:90eef9396055b397aa563f7be61b71641af9c7852e2e6fc30d03ee5335c70301"
+  }
+}

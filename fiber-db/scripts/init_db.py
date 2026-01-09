@@ -2,11 +2,17 @@ import os
 import time
 import asyncio
 import asyncpg
-import logging
+import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("init_db")
+# Centralized logging (entrypoint pattern)
+sys.path.insert(0, '/app/fiber-logging/src')
+try:
+    from logger import get_logger
+    logger = get_logger("fiber-etl", env=os.getenv("ENV", "dev"))
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("fiber-etl")
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_USER = os.getenv("DB_USER", "postgres")

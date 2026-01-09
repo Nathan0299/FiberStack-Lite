@@ -1,0 +1,656 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(255, 255, 255, 0.2)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "fixed"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 15,
+                        "gradientMode": "opacity",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "decimals": 2,
+                    "fixedColor": "#94a3b8",
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "#94a3b8",
+                                "value": null
+                            },
+                            {
+                                "color": "#d946ef",
+                                "value": 100
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 16,
+                "x": 0,
+                "y": 0
+            },
+            "id": 3,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "hidden",
+                    "placement": "bottom",
+                    "showLegend": false
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT \n  time_bucket('$__interval', time) AS \"time\",\n  node_id,\n  AVG(latency_ms) as latency\nFROM metrics\nWHERE \n  $__timeFilter(time)\n  AND node_id IN ($node)\nGROUP BY 1, 2\nORDER BY 1",
+                    "refId": "A"
+                }
+            ],
+            "title": "PRIMARY: Regional Latency",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "fixedColor": "#f8fafc",
+                        "mode": "fixed"
+                    },
+                    "decimals": 0,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "#ef4444",
+                                "value": null
+                            },
+                            {
+                                "color": "#f8fafc",
+                                "value": 1
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 8,
+                "x": 16,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(*) as active_nodes FROM nodes WHERE status = 'reporting'",
+                    "refId": "A"
+                }
+            ],
+            "title": "ACTIVE NODES",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "decimals": 2,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "#334155",
+                                "value": null
+                            },
+                            {
+                                "color": "#ef4444",
+                                "value": 0.01
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 8,
+                "x": 16,
+                "y": 5
+            },
+            "id": 4,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "hidden",
+                    "placement": "bottom",
+                    "showLegend": false
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT \n  time_bucket('$__interval', time) AS \"time\",\n  node_id,\n  AVG(packet_loss) as packet_loss\nFROM metrics\nWHERE \n  $__timeFilter(time)\n  AND node_id IN ($node)\nGROUP BY 1, 2\nORDER BY 1",
+                    "refId": "A"
+                }
+            ],
+            "title": "PACKET LOSS TREND",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 2,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "#334155",
+                                "value": null
+                            },
+                            {
+                                "color": "#ef4444",
+                                "value": 0.01
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 10
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT MAX(avg_loss) FROM (SELECT AVG(packet_loss) as avg_loss FROM metrics WHERE time > NOW() - INTERVAL '10 minutes' AND packet_loss > 1.0 GROUP BY node_id) as sub",
+                    "refId": "A"
+                }
+            ],
+            "title": "CRITICAL INCIDENT STATUS (HYSTERESIS)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 20
+            },
+            "id": 10,
+            "interval": "1m",
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                },
+                "tooltip": {
+                    "mode": "single"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT time_bucket('5 minutes', m.time) as time, LOWER(n.country) || '-' || LOWER(n.region) as region, AVG(m.latency_ms) as latency FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > $__timeFrom() AND m.time < $__timeTo() AND ('$region' = 'All' OR LOWER(n.country) || '-' || LOWER(REPLACE(n.region, ' ', '-')) = '$region') GROUP BY 1, 2 ORDER BY 1",
+                    "refId": "A"
+                }
+            ],
+            "title": "Regional Latency Comparison",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 20
+            },
+            "id": 11,
+            "interval": "5m",
+            "options": {
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "score"
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT m.node_id, LOWER(n.country) || '-' || LOWER(n.region) as region, ROUND(AVG(m.latency_ms)::numeric, 1) as avg_latency, ROUND(AVG(m.packet_loss)::numeric, 2) as avg_loss, ROUND((AVG(m.latency_ms)/50.0 + AVG(m.packet_loss)*10.0 + (100.0-AVG(m.uptime_pct))*2.0)::numeric, 2) as score FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > NOW() - INTERVAL '1 hour' AND ('$region' = 'All' OR LOWER(n.country) || '-' || LOWER(REPLACE(n.region, ' ', '-')) = '$region') GROUP BY m.node_id, n.country, n.region ORDER BY score DESC LIMIT 5",
+                    "refId": "A"
+                }
+            ],
+            "title": "Top-5 Problematic Nodes",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "description": "Average of 5-min averages for visual comparison only. Not for alerting/SLA.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 80
+                            },
+                            {
+                                "color": "red",
+                                "value": 150
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                }
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 0,
+                "y": 28
+            },
+            "id": 12,
+            "options": {
+                "orientation": "horizontal",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ]
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT region, ROUND(AVG(avg_latency)::numeric, 1) as latency FROM aggregates_5m_region WHERE time > $__timeFrom() AND ('$region' = 'All' OR region = '$region') GROUP BY region ORDER BY latency DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Regional Comparison (Heuristic)",
+            "type": "bargauge"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "scheme",
+                        "schemeName": "Oranges"
+                    },
+                    "max": 300,
+                    "min": 0
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 34
+            },
+            "id": 13,
+            "options": {
+                "calculate": false,
+                "yAxis": {
+                    "axisPlacement": "left"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT time_bucket('15 minutes', m.time) as time, LOWER(n.country) || '-' || LOWER(n.region) as region, LEAST(AVG(m.latency_ms), 300) as latency FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > $__timeFrom() AND ('$region' = 'All' OR LOWER(n.country) || '-' || LOWER(REPLACE(n.region, ' ', '-')) = '$region') GROUP BY 1, 2 ORDER BY 1",
+                    "refId": "A"
+                }
+            ],
+            "title": "Latency Heatmap (Clamped 300ms)",
+            "type": "heatmap"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "TimescaleDB"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percent",
+                    "min": 90,
+                    "max": 100
+                }
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 42
+            },
+            "id": 14,
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "TimescaleDB"
+                    },
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT time, region, avg_uptime as uptime FROM aggregates_5m_region WHERE time > $__timeFrom() AND ('$region' = 'All' OR region = '$region') ORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Uptime Trends by Region",
+            "type": "timeseries"
+        }
+    ],
+    "refresh": "1m",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+        "fiberstack",
+        "black-signal"
+    ],
+    "templating": {
+        "list": [
+            {
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "All"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "TimescaleDB"
+                },
+                "definition": "SELECT 'All' UNION SELECT DISTINCT LOWER(country) || '-' || LOWER(REPLACE(region, ' ', '-')) FROM nodes WHERE status != 'deleted'",
+                "hide": 0,
+                "includeAll": false,
+                "multi": false,
+                "name": "region",
+                "options": [],
+                "query": "SELECT 'All' UNION SELECT DISTINCT LOWER(country) || '-' || LOWER(REPLACE(region, ' ', '-')) FROM nodes WHERE status != 'deleted'",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "current": {
+                    "selected": true,
+                    "text": [
+                        "All"
+                    ],
+                    "value": [
+                        "$__all"
+                    ]
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "TimescaleDB"
+                },
+                "definition": "SELECT DISTINCT n.node_id FROM nodes n WHERE n.status != 'deleted' AND ('$region' = 'All' OR LOWER(n.country) || '-' || LOWER(REPLACE(n.region, ' ', '-')) = '$region')",
+                "hide": 0,
+                "includeAll": true,
+                "multi": true,
+                "name": "node",
+                "options": [],
+                "query": "SELECT DISTINCT n.node_id FROM nodes n WHERE n.status != 'deleted' AND ('$region' = 'All' OR LOWER(n.country) || '-' || LOWER(REPLACE(n.region, ' ', '-')) = '$region')",
+                "refresh": 2,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "utc",
+    "title": "FiberStack Main",
+    "uid": "fiberstack-main",
+    "version": 2,
+    "weekStart": ""
+}

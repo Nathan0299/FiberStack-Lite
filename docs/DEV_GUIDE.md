@@ -1,8 +1,8 @@
 # FiberStack-Lite Developer Guide
 
 **Version:** 1.0  
-**Date:** 2025-11-24  
-**Status:** Draft (Pending Freeze)
+**Date:** 2026-01-09  
+**Status:** Frozen (v1.0.0-mvp)
 
 ---
 
@@ -51,11 +51,11 @@ docker-compose -f fiber-deploy/docker-compose.dev.yml logs -f
 
 ### Access Services
 
-| Service | URL | Credentials (Default) |
+| Service | URL | Credentials |
 |---------|-----|-----------------------|
-| **Dashboard** | http://localhost:3000 | N/A |
+| **Dashboard** | http://localhost:4000 | N/A (Vite Dev Server) |
 | **API Docs** | http://localhost:8000/docs | N/A |
-| **TimescaleDB** | localhost:5432 | user: `postgres`, pass: `postgres` |
+| **TimescaleDB** | localhost:5432 | Configured via env vars |
 | **Elasticsearch** | http://localhost:9200 | N/A |
 | **Redis** | localhost:6379 | N/A |
 
@@ -75,10 +75,17 @@ docker-compose -f fiber-deploy/docker-compose.dev.yml down -v
 
 ### Branching Strategy
 
-- **`main`**: Production-ready code. Always stable.
-- **`develop`**: Integration branch.
-- **`feature/xyz`**: New features (branch off `develop`).
-- **`fix/xyz`**: Bug fixes (branch off `develop`).
+- **`main`**: Production-ready code. Protected branch (PR required).
+- **`develop`**: Integration branch. All features merge here first.
+- **`feature/xyz`**: New capabilities.
+- **`fix/xyz`**: Bug fixes.
+- **`hotfix/xyz`**: Critical prod fixes (merge to main & develop).
+
+### CI/CD Pipeline
+1. **Lint**: Flake8, Black, ESLint.
+2. **Test**: Unit + Integration (`pytest`).
+3. **Verify**: Doc Link Check (`verify_docs.sh`).
+4. **Build**: Docker build & push (on tag).
 
 ### Commit Messages
 
@@ -100,11 +107,15 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
    pytest tests/
    ```
 
-#### Frontend (fiber-dashboard)
+#### Frontend (fiber-dashboard — Vite)
 
 1. **Modify code** in `src/`.
-2. **Auto-reload** is enabled via React scripts.
-3. **Run tests**:
+2. **Auto-reload** is enabled via Vite HMR.
+3. **Run dev server**:
+   ```bash
+   cd fiber-dashboard && npm run dev
+   ```
+4. **Run tests**:
    ```bash
    npm test
    ```
@@ -185,6 +196,24 @@ FiberStack-Lite/
 
 ---
 
+## 7. Operational Guides
+
+### Adding a New Probe
+1. **Provision Hardware**: Pi 4 or equivalent (4GB RAM recommended).
+2. **Generate Token**:
+   ```bash
+   # Central Admin
+   python3 scripts/issue_token.py --region gh-accra --role probe
+   ```
+3. **Configure**: Update `probe.yaml` with Token and Region.
+4. **Deploy**:
+   ```bash
+   docker-compose -f fiber-deploy/docker-compose.edge.yml up -d
+   ```
+5. **Verify**: Check Dashboard > Inventory.
+
+---
+
 ## 7. Troubleshooting
 
 **Issue: Containers fail to start**
@@ -199,7 +228,20 @@ FiberStack-Lite/
 - Restart container: `docker-compose restart <service_name>`.
 - Rebuild image: `docker-compose build <service_name>`.
 
+**Issue: Missing Logs / Trace IDs**
+- **Symptom**: Dashboard shows metrics, but Kibana shows no logs.
+- **Root Cause**: `fiber-filebeat` disconnected or ES paused.
+- **Fix**:
+  1. Check Filebeat logs: `docker logs fiber-filebeat`.
+  2. Verify Trace ID header: `curl -v http://localhost:8000/api/status`.
+  3. Resume ES: `docker unpause fiber-es`.
+
+**Issue: Rate Limit "Too Many Requests" (429)**
+- **Normal**: Valid burst protection. Client should retry (Exp. Backoff).
+- **Abnormal**: If consistent, check `RATE_LIMIT_INGEST_RATE` vs Probe count.
+- **Debug**: Check `X-RateLimit-Remaining` header.
+
 ---
 
-**Document Status:** Draft - Pending Architecture Freeze  
-**Next Step:** Review in [ARCHITECTURE_FREEZE.md](file:///Users/macpro/FiberStack-Lite/docs/ARCHITECTURE_FREEZE.md)
+**Document Status:** Frozen (v1.0.0-mvp)  
+**Freeze Date:** 2026-01-09

@@ -1,0 +1,53 @@
+groups:
+  - name: aggregation_health
+    interval: 30s
+    rules:
+      # Alert: Aggregate refresh is stale
+      - alert: AggregateStale
+        expr: aggregate_health_status == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Continuous aggregate {{ $labels.view_name }} is stale"
+          description: "Aggregate has not refreshed within expected window. Dashboard may show old data."
+
+      # Alert: High fallback rate
+      - alert: AggregateFallbackHigh
+        expr: rate(aggregate_fallback_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High aggregate fallback rate"
+          description: "More than 10% of queries are falling back to raw metrics."
+
+      # Alert: Cache miss rate high
+      - alert: CacheMissRateHigh
+        expr: |
+          rate(dashboard_cache_misses_total[5m]) / 
+          (rate(dashboard_cache_hits_total[5m]) + rate(dashboard_cache_misses_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Dashboard cache miss rate > 50%"
+
+      # Alert: Query latency degraded
+      - alert: DashboardQuerySlow
+        expr: histogram_quantile(0.95, rate(dashboard_cache_latency_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dashboard query P95 latency > 2s"
+
+      # Alert: Circuit breaker tripped
+      - alert: AggregateCircuitOpen
+        expr: aggregate_circuit_breaker_open == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Aggregate circuit breaker is OPEN"
+          description: "Aggregate {{ $labels.view_name }} has failed repeatedly. All queries falling back to raw metrics."

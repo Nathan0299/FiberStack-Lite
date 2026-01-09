@@ -1,8 +1,9 @@
 # FiberStack-Lite
 
-![Status](https://img.shields.io/badge/Status-Active_Development-green)
-![Version](https://img.shields.io/badge/Version-0.1.0-blue)
+![Status](https://img.shields.io/badge/Status-MVP_Frozen-red)
+![Version](https://img.shields.io/badge/Version-v1.0.0--mvp-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-Frozen-red)
+![Freeze Date](https://img.shields.io/badge/Freeze_Date-2026--01--09-orange)
 
 **Distributed Network Infrastructure Monitoring System for Africa**
 
@@ -10,24 +11,25 @@ FiberStack-Lite is a lightweight, scalable monitoring solution designed to track
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (MVP Dry Run)
 
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.11+
 - Node.js 18+
 
-### Run Locally
+### Run Locally (Hybrid Simulation)
 ```bash
 # Clone repo
 git clone https://github.com/Nathan0299/FiberStack-Lite.git
 cd FiberStack-Lite
 
-# Start development stack
+# Start MVP Stack (Black Signal Verified)
 docker-compose -f fiber-deploy/docker-compose.dev.yml up -d
 ```
 
-Access the dashboard at `http://localhost:4000`.
+- **Dashboard**: `http://localhost:4000` (Command-Grade UI)
+- **API Docs**: `http://localhost:8000/docs`
 
 ---
 
@@ -40,6 +42,7 @@ The project architecture is strictly defined in the `docs/` directory:
 - **[Deployment Model](docs/DEPLOYMENT_MODEL.md)**: Infrastructure, topology, and scaling.
 - **[Developer Guide](docs/DEV_GUIDE.md)**: Setup, workflow, and coding standards.
 - **[Architecture Freeze](docs/ARCHITECTURE_FREEZE.md)**: Locked decisions and constraints.
+- **[Release Notes](docs/RELEASE_NOTES.md)**: v1.0.0 Capabilities.
 
 ---
 
@@ -63,10 +66,10 @@ FiberStack-Lite consists of 6 microservices:
 | **Phase 1** | Architecture & Foundation | ✅ Complete |
 | **Phase 2** | Core Services (API, DB, Probe) | ✅ Complete |
 | **Phase 3** | Sandbox & Testing | ✅ Complete |
-| **Phase 4** | Dashboard & Visualization | 🚧 Next |
-| **Phase 5** | Deployment & Containerization | 📅 Planned |
-| **Phase 6** | MVP Validation | 📅 Planned |
-| **Phase 7** | Public Launch | 📅 Planned |
+| **Phase 4** | Dashboard & Visualization | ✅ Complete |
+| **Phase 5** | Deployment & Containerization | ✅ Complete |
+| **Phase 6** | MVP Validation | ✅ Complete |
+| **Phase 7** | Public Launch | 🚧 Next |
 
 ---
 

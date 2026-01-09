@@ -1,0 +1,160 @@
+version: "3.9"
+
+# =============================================================================
+# FiberStack Production Compose
+# =============================================================================
+# Required ENV vars (via --env-file):
+#   ENV       - Environment (dev/staging/prod)
+#   DB_NAME   - Database name
+#   DB_USER   - Database user
+#   DB_PASS   - Database password
+#
+# Notes:
+#   - Redis is EPHEMERAL (no volume) - queues only, no durability needed
+#   - ETL depends on Redis+DB only (not API) - processes queue async
+# =============================================================================
+
+# Centralized logging configuration
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+    mode: "non-blocking"
+    max-buffer-size: "4m"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: fiber-redis
+    restart: unless-stopped
+    # NOTE: Ephemeral by design - queue data is transient
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "6379:6379"
+    networks:
+      - fiber-net
+
+  timescaledb:
+    image: timescale/timescaledb:2.11.2-pg15
+    container_name: fiber-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - ../fiber-db/schemas:/docker-entrypoint-initdb.d
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fiber-net
+
+  fiber-api:
+    build:
+      context: ..
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    container_name: fiber-api
+    restart: unless-stopped
+    environment:
+      - ENV=${ENV}
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=timescaledb
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - FEDERATION_SECRET=${FEDERATION_SECRET:-sandbox_secret}
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fiber-net
+
+  fiber-etl:
+    # NOTE: Depends on Redis+DB only (not API) - async queue processor
+    build:
+      context: ..
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    container_name: fiber-etl
+    restart: unless-stopped
+    environment:
+      - ENV=${ENV}
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=timescaledb
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - fiber-net
+
+  fiber-dashboard:
+    build:
+      context: ..
+      dockerfile: fiber-deploy/docker/Dockerfile.dashboard
+    container_name: fiber-dashboard
+    restart: unless-stopped
+    ports:
+      - "4000:3000"
+    depends_on:
+      fiber-api:
+        condition: service_healthy
+    networks:
+      - fiber-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: fiber-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_PASS:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - DB_HOST=timescaledb
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    volumes:
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/alerting:/etc/grafana/provisioning/alerting
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - fiber-net
+
+networks:
+  fiber-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+

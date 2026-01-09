@@ -11,13 +11,22 @@ services:
     volumes:
       - ../fiber-api:/app/fiber-api
       - ../fiber-logging:/app/fiber-logging
+      - ../fiber-shared:/app/fiber-shared
     environment:
       - ENV=dev
       - REDIS_URL=redis://redis:6379/0
       - DB_HOST=timescaledb
       - DB_PASS=postgres
       - DB_USER=postgres
+      - DB_USER=postgres
       - DB_NAME=fiberstack
+      - RATE_LIMIT_INGEST_RATE=1000.0
+      - RATE_LIMIT_INGEST_BURST=2000
+      - RATE_LIMIT_GLOBAL_MAX=5000
+      - RATE_LIMIT_TRUSTED_PROXIES=127.0.0.1,192.168.65.1,172.17.0.1
+      - USER_CREDENTIALS=admin:admin,testuser:testpass,operator:operator_password,probe_user:probe_password
+      - FEDERATION_SECRET=sandbox_secret
+      - JWT_SECRET=dev_jwt_secret_unsafe_for_prod
     depends_on:
       - redis
       - timescaledb
@@ -32,6 +41,7 @@ services:
       - ../fiber-etl:/app/fiber-etl
       - ../fiber-logging:/app/fiber-logging
       - ../fiber-db:/app/fiber-db
+      - ../fiber-shared:/app/fiber-shared
     environment:
       - ENV=dev
       - REDIS_URL=redis://redis:6379/0
@@ -43,7 +53,7 @@ services:
     depends_on:
       - redis
       - timescaledb
-      # - elasticsearch
+      - elasticsearch
     command: python -m fiber-etl.src.worker
 
   timescaledb:
@@ -58,16 +68,50 @@ services:
       - fiber_db_data:/var/lib/postgresql/data
       - ../fiber-db/schemas:/docker-entrypoint-initdb.d
 
-  # elasticsearch:
-  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
-  #   container_name: fiber-es
-  #   ports:
-  #     - "9200:9200"
-  #   environment:
-  #     - discovery.type=single-node
-  #     - xpack.security.enabled=false
-  #   volumes:
-  #     - fiber_es_data:/usr/share/elasticsearch/data
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: fiber-es
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - fiber_es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    container_name: fiber-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+         condition: service_healthy
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    container_name: fiber-filebeat
+    user: root
+    volumes:
+      - ../fiber-deploy/configs/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../fiber-deploy/configs/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - fiber_filebeat_data:/var/lib/filebeat/data
+    environment:
+      - ES_HOST=elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
 
   redis:
     image: redis:7-alpine
@@ -78,16 +122,75 @@ services:
       - fiber_redis_data:/data
 
   fiber-dashboard:
-    image: node:18-alpine
+    image: node:22-alpine
     container_name: fiber-dashboard
     working_dir: /app
     ports:
       - "4000:3000"
     volumes:
       - ../fiber-dashboard:/app
-    command: sh -c "npm install && npm start"
+    command: sh -c "npm install && npm run dev"
+
+  probe-gh:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: probe-gh
+    environment:
+      - ENV=dev
+      - API_URL=http://fiber-api:8000/api/push
+      - FEDERATION_SECRET=sandbox_secret
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - NODE_ID=probe-gh-accra
+      - COUNTRY=GH
+      - REGION=Accra
+      - PROBE_INTERVAL=10
+    depends_on:
+      - fiber-api
+
+  probe-ng:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: probe-ng
+    environment:
+      - ENV=dev
+      - API_URL=http://fiber-api:8000/api/push
+      - FEDERATION_SECRET=sandbox_secret
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - NODE_ID=probe-ng-lagos
+      - COUNTRY=NG
+      - REGION=Lagos
+      - PROBE_INTERVAL=12
+    depends_on:
+      - fiber-api
+
+  probe-ke:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: probe-ke
+    environment:
+      - ENV=dev
+      - API_URL=http://fiber-api:8000/api/push
+      - FEDERATION_SECRET=sandbox_secret
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - NODE_ID=probe-ke-nairobi
+      - COUNTRY=KE
+      - REGION=Nairobi
+      - PROBE_INTERVAL=15
+    depends_on:
+      - fiber-api
 
 volumes:
   fiber_db_data:
   fiber_es_data:
   fiber_redis_data:
+  fiber_filebeat_data:
+
+
+
+networks:
+  default:
+    name: fiber-net
+    driver: bridge

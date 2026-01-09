@@ -1,0 +1,173 @@
+version: '3.8'
+
+# Day 69: Sandbox Cluster Simulation
+# JWT Auth: RS256 (Central signs, API verifies)
+# Duration: 15 minutes (3 × 5-min aggregate windows)
+
+services:
+  # --- CONTROL PLANE ---
+  fiber-db:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fiberstack
+    volumes:
+      - ../../fiber-db/schemas:/docker-entrypoint-initdb.d
+    networks:
+      - fiber-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  fiber-redis:
+    image: redis:7-alpine
+    networks:
+      - fiber-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  fiber-api:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - FEDERATION_SECRET=sandbox_secret
+      - NODE_ROLE=central
+      - REGION_VALIDATION=strict
+      - ALLOWED_REGIONS=gh-accra,ng-lagos,ke-nairobi
+      - ETL_QUEUE_KEY=fiber:etl:queue
+      - ENV=sandbox
+    ports:
+      - "8000:8000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
+    networks:
+      - fiber-network
+
+  fiber-etl:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - ENV=sandbox
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
+    networks:
+      - fiber-network
+
+  fiber-es:
+    image: elasticsearch:8.11.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - path.repo=/usr/share/elasticsearch/backup
+    volumes:
+      - fiber-es-data:/usr/share/elasticsearch/data
+      - fiber-es-backup:/usr/share/elasticsearch/backup
+    networks:
+      - fiber-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '.*' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "9200:9200"
+
+  grafana:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    ports:
+      - "3000:3000"
+    depends_on:
+      - fiber-db
+    networks:
+      - fiber-network
+
+  # --- PROBES (3 Regions) ---
+  probe-gh:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - NODE_ID=probe-accra-01
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_INTERVAL=15
+      - COUNTRY=GH
+      - REGION=Accra
+
+    depends_on:
+      - fiber-api
+    networks:
+      - fiber-network
+    restart: on-failure
+
+  probe-ng:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - NODE_ID=probe-lagos-01
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_INTERVAL=15
+      - COUNTRY=NG
+      - REGION=Lagos
+    depends_on:
+      - fiber-api
+    networks:
+      - fiber-network
+    restart: on-failure
+
+  probe-ke:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - NODE_ID=probe-nairobi-01
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_INTERVAL=15
+      - COUNTRY=KE
+      - REGION=Nairobi
+    depends_on:
+      - fiber-api
+    networks:
+      - fiber-network
+    restart: on-failure
+
+networks:
+  fiber-network:
+    driver: bridge
+
+volumes:
+  fiber-es-data:
+  fiber-es-backup:

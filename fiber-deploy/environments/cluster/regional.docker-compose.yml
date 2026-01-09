@@ -1,0 +1,39 @@
+# Regional Ingest Node
+# Deploy in each region (GH, NG, KE)
+
+services:
+  regional-redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - regional-redis-data:/data
+    networks:
+      - regional-network
+
+  regional-api:
+    build:
+      context: ../../../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    environment:
+      - REDIS_URL=redis://regional-redis:6379/0
+      - CENTRAL_API_URL=${CENTRAL_API_URL}
+      - FEDERATION_SECRET=${FEDERATION_SECRET}
+      - REGION_ID=${REGION_ID}
+      - NODE_ROLE=regional
+      - REGION_VALIDATION=lenient
+      - ETL_QUEUE_KEY=fiber:etl:queue
+      - MODE=relay
+      - ENV=prod
+    ports:
+      - "8000:8000"
+    depends_on:
+      - regional-redis
+    networks:
+      - regional-network
+
+volumes:
+  regional-redis-data:
+
+networks:
+  regional-network:
+    driver: bridge

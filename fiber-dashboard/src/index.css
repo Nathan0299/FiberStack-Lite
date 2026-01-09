@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@theme {
+  --color-border: hsl(240 5% 15%);
+  --color-input: hsl(240 5% 15%);
+  --color-ring: hsl(0 0% 100%);
+  --color-background: hsl(240 10% 2%);
+  --color-foreground: hsl(0 0% 95%);
+
+  --color-card: hsl(240 5% 6%);
+  --color-card-foreground: hsl(0 0% 90%);
+  --color-popover: hsl(240 5% 8%);
+  --color-popover-foreground: hsl(0 0% 95%);
+
+  --color-status-healthy: hsl(157 100% 50%);
+  --color-status-degraded: hsl(43 100% 50%);
+  --color-status-critical: hsl(346 100% 50%);
+  --color-status-stale: hsl(240 5% 40%);
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-color: var(--color-background);
+  }
+}
+
+@layer components {
+
+  /* 
+     MATTE CARD 
+     Replaces "Glassmorphism". Solid, opaque, high contrast.
+  */
+  .matte-card {
+    @apply bg-card border border-border rounded-lg shadow-sm;
+  }
+
+  /* 
+     INSTRUMENT TYPOGRAPHY 
+     Monospace numerals for jitter-free updates
+  */
+  .font-mono-num {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+    font-variant-numeric: tabular-nums;
+    /* CRITICAL: Sub-pixel stability */
+    letter-spacing: -0.02em;
+  }
+
+  /* 
+     NEON BADGES 
+  */
+  .badge-healthy {
+    @apply text-[hsl(var(--status-healthy))] bg-[hsla(var(--status-healthy)/0.1)] border border-[hsla(var(--status-healthy)/0.2)];
+  }
+
+  .badge-degraded {
+    @apply text-[hsl(var(--status-degraded))] bg-[hsla(var(--status-degraded)/0.1)] border border-[hsla(var(--status-degraded)/0.2)];
+  }
+
+  .badge-critical {
+    @apply text-[hsl(var(--status-critical))] bg-[hsla(var(--status-critical)/0.1)] border border-[hsla(var(--status-critical)/0.2)];
+  }
+
+  /* 
+     MOBILE BOTTOM SHEET (Slide Up)
+  */
+  .bottom-sheet {
+    @apply fixed left-0 right-0 bottom-0 bg-card border-t border-border z-50 transform transition-transform duration-300 ease-out;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@layer utilities {
+
+  /* 
+     VISUAL DISCIPLINE: Command systems do not panic.
+     - No blinking
+     - Slow, linear transitions
+     - Confidence is quiet.
+  */
+
+  /* Removed: animate-blink — Command systems do not panic. */
+
+  .animate-pulse-slow {
+    animation: pulse 5s linear infinite;
+  }
+
+  /* Slow fade for territory decay */
+  .animate-fade-slow {
+    animation: fade 3s linear infinite alternate;
+  }
+
+  @keyframes fade {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0.6;
+    }
+  }
+}
+
+/* 
+   SCROLLBAR (Brutal / Cyberpunk)
+*/
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0e0e11; 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a; 
+  border-radius: 0px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46; 
+}
+
+/* 
+   LEAFLET OVERRIDES 
+   Dark mode map tiles
+*/
+.leaflet-container {
+  background: #050505 !important;
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #0e0e11;
+  color: #f2f2f2;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.leaflet-popup-tip {
+  background: #0e0e11;
+}

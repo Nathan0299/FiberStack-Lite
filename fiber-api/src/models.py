@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import re
 
@@ -16,13 +16,43 @@ class ProbeMetric(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
     @field_validator('node_id')
-    def validate_uuid(cls, v):
-        # Simple UUID-like check
-        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v):
-            raise ValueError('node_id must be a valid UUID')
+    def validate_node_id(cls, v):
+        # Allow any valid string identifier (1-50 chars, alphanumeric with hyphens)
+        if not v or len(v) > 50:
+            raise ValueError('node_id must be 1-50 characters')
         return v
+
+class Node(BaseModel):
+    node_id: str = Field(..., description="Unique identifier for the probe node")
+    status: str = Field(..., description="Lifecycle state: registered, reporting, inactive, deleted")
+    country: str = Field(..., pattern="^[A-Z]{2}$")
+    region: str
+    lat: float
+    lng: float
+    last_seen: Optional[datetime] = None
+
+    lat: float
+    lng: float
+    last_seen: Optional[datetime] = None
+
+class AggregatedMetric(BaseModel):
+    dimension: str = Field(..., description="Grouping key (Region name or Node ID)")
+    avg_latency: float
+    min_latency: float
+    max_latency: float
+    p95_latency: float
+    avg_packet_loss: float
+    downtime_intervals: int
+    reporting_count: int
+    availability_pct: float
+
+class BatchPayload(BaseModel):
+    """Batch of metrics from a probe."""
+    node_id: str
+    metrics: List[ProbeMetric]
 
 class APIResponse(BaseModel):
     status: str
     message: Optional[str] = None
     data: Optional[Any] = None
+    meta: Optional[Dict[str, Any]] = None

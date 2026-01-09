@@ -1,0 +1,31 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: 'Pager (Webhook)'
+    receivers:
+      - uid: 'webhook-pager'
+        type: webhook
+        settings:
+          url: 'https://webhook.example.com/alerts'
+          httpMethod: POST
+  
+  - orgId: 1
+    name: 'Standard Email'
+    receivers:
+      - uid: 'email-team'
+        type: email
+        settings:
+          addresses: 'alerts@example.com'
+
+  - orgId: 1
+    name: 'Slack Alerts'
+    receivers:
+      - uid: 'slack-fiberstack'
+        type: slack
+        settings:
+          url: 'https://hooks.slack.com/services/PLACEHOLDER'
+          recipient: '#fiberstack-alerts'
+          title: '{{ .CommonLabels.alertname }}'
+          text: '{{ .CommonAnnotations.summary }}'
+

@@ -1,89 +1,160 @@
-version: "3.9"
+version: '3.8'
 
 services:
-  timescale:
+  # --- CONTROL PLANE ---
+  fiber-db:
+    container_name: fiber-db
     image: timescale/timescaledb:latest-pg14
-    container_name: fs-timescale-sandbox
     environment:
-      POSTGRES_DB: ${TS_DB}
-      POSTGRES_USER: ${TS_USER}
-      POSTGRES_PASSWORD: ${TS_PASSWORD}
-    ports:
-      - "5433:5432"
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fiberstack
     volumes:
-      - ./volumes/timescale:/var/lib/postgresql/data
+      - ../../fiber-db/schemas:/docker-entrypoint-initdb.d
     networks:
-      - fs-sandbox
+      - fiber-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  elastic:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.2
-    container_name: fs-elastic-sandbox
-    environment:
-      discovery.type: single-node
-      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
-      xpack.security.enabled: "false"
-    ports:
-      - "9201:9200"
+  fiber-redis:
+    image: redis:7-alpine
     networks:
-      - fs-sandbox
+      - fiber-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   fiber-api:
+    container_name: fiber-api
     build:
-      context: ../../fiber-api
-      dockerfile: ../../fiber-deploy/docker/Dockerfile.api
-    container_name: fs-api-sandbox
-    env_file:
-      - ./configs/env.sandbox
-      - ./configs/env.api
-    depends_on:
-      - timescale
-      - elastic
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - FEDERATION_SECRET=sandbox_secret
+      - ENV=sandbox
     ports:
-      - "8081:8080"
+      - "8000:8000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
     networks:
-      - fs-sandbox
+      - fiber-network
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   fiber-etl:
     build:
-      context: ../../fiber-etl
-      dockerfile: ../../fiber-deploy/docker/Dockerfile.etl
-    container_name: fs-etl-sandbox
-    env_file:
-      - ./configs/env.sandbox
-      - ./configs/env.etl
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - ENV=sandbox
     depends_on:
-      - fiber-api
-      - timescale
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
     networks:
-      - fs-sandbox
+      - fiber-network
+    restart: on-failure
+    # No direct healthcheck commonly exposed unless we add one to the container (e.g. touch file)
+    # But for sandbox, we rely on API /status
 
-  fiber-probe:
+  grafana:
     build:
-      context: ../../fiber-probe
-      dockerfile: ../../fiber-deploy/docker/Dockerfile.probe
-    container_name: fs-probe-sandbox
-    env_file:
-      - ./configs/env.sandbox
-      - ./configs/env.probe
-    depends_on:
-      - fiber-api
-    networks:
-      - fs-sandbox
-
-  fiber-dashboard:
-    build:
-      context: ../../fiber-dashboard
-      dockerfile: ../../fiber-deploy/docker/Dockerfile.dashboard
-    container_name: fs-dashboard-sandbox
-    env_file:
-      - ./configs/env.dashboard
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.grafana
     ports:
-      - "8080:8080"
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - DB_HOST=fiber-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=fiberstack
+      - ALERT_WEBHOOK_URL=http://localhost:8000/api/hook/dummy
+      - ALERT_EMAIL_ADDR=dev@example.com
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/json/fiberstack-main.json
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     depends_on:
-      - fiber-api
+      - fiber-db
     networks:
-      - fs-sandbox
+      - fiber-network
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- DATA PLANE (Probes) ---
+  probe-accra:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_API_KEY=sandbox_secret
+      - NODE_ID=accra-1
+      - LOG_LEVEL=INFO
+    depends_on:
+      fiber-api:
+        condition: service_healthy
+    networks:
+      - fiber-network
+    restart: on-failure
+
+  probe-lagos:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_API_KEY=sandbox_secret
+      - NODE_ID=lagos-1
+      - LOG_LEVEL=INFO
+    depends_on:
+      fiber-api:
+        condition: service_healthy
+    networks:
+      - fiber-network
+    restart: on-failure
+
+  probe-nairobi:
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - API_URL=http://fiber-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_API_KEY=sandbox_secret
+      - NODE_ID=nairobi-1
+      - LOG_LEVEL=INFO
+    depends_on:
+      fiber-api:
+        condition: service_healthy
+    networks:
+      - fiber-network
+    restart: on-failure
 
 networks:
-  fs-sandbox:
+  fiber-network:
     driver: bridge

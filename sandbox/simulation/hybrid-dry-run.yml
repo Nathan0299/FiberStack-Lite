@@ -1,0 +1,189 @@
+version: '3.8'
+
+# Day 76: Hybrid Deployment Dry Run
+# Network-isolated probes with simulated latency
+# Black Signal Standards: Measurable thresholds, hard gates
+
+networks:
+  central-net:
+    driver: bridge
+  probe-net:
+    driver: bridge
+
+services:
+  # --- CENTRAL STACK ---
+  fiber-db:
+    image: timescale/timescaledb:mvp-pg14 # Permitted external dependency (or pin SHA) # Permitted external dependency (or pin SHA)
+    container_name: hybrid-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fiberstack
+    volumes:
+      - ../../fiber-db/schemas:/docker-entrypoint-initdb.d
+    networks:
+      - central-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fiber-redis:
+    image: redis:7-alpine
+    container_name: hybrid-redis
+    networks:
+      - central-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fiber-api:
+    image: fiber-api:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    container_name: hybrid-api
+    environment:
+      - DB_HOST=fiber-db
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=fiberstack
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - FEDERATION_SECRET=hybrid_dry_run_secret
+      - NODE_ROLE=central
+      - REGION_VALIDATION=lenient
+      - ENV=sandbox
+      # Day 78: Auth Config
+      - JWT_SECRET=dev-secret-do-not-use-in-prod
+      - ADMIN_USERS=admin
+      - OPERATOR_USERS=operator
+      - USER_CREDENTIALS=admin:admin,operator:operator,viewer:viewer
+
+    ports:
+      - "8000:8000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
+    networks:
+      - central-net
+      - probe-net  # Accessible from isolated probes
+
+  fiber-etl:
+    image: fiber-etl:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    container_name: hybrid-etl
+    environment:
+      - DB_HOST=fiber-db
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=fiberstack
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - ENV=sandbox
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis:
+        condition: service_healthy
+    networks:
+      - central-net
+
+  fiber-dashboard:
+    image: fiber-dashboard:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.dashboard
+    container_name: hybrid-dashboard
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - fiber-api
+    networks:
+      - central-net
+
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: hybrid-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - DB_HOST=fiber-db
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=fiberstack
+    ports:
+      - "3001:3000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+    networks:
+      - central-net
+
+  # --- ISOLATED PROBES (probe-net only) ---
+  probe-gh:
+    image: fiber-probe:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: hybrid-probe-gh
+    environment:
+      - NODE_ID=probe-accra-hybrid
+      - API_URL=http://hybrid-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=hybrid_dry_run_secret
+      - PROBE_INTERVAL=5
+      - COUNTRY=GH
+      - REGION=Accra
+    depends_on:
+      - fiber-api
+    networks:
+      - probe-net  # Isolated: can reach API, NOT DB
+    restart: on-failure
+    # Note: tc netem requires cap_add: [NET_ADMIN] and iproute2 in image
+    # For MVP, we rely on Docker network isolation
+
+  probe-ng:
+    image: fiber-probe:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: hybrid-probe-ng
+    environment:
+      - NODE_ID=probe-lagos-hybrid
+      - API_URL=http://hybrid-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=hybrid_dry_run_secret
+      - PROBE_INTERVAL=5
+      - COUNTRY=NG
+      - REGION=Lagos
+    depends_on:
+      - fiber-api
+    networks:
+      - probe-net
+    restart: on-failure
+
+  probe-ke:
+    image: fiber-probe:v1.0.0 # PINNED
+    build:
+      context: ../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: hybrid-probe-ke
+    environment:
+      - NODE_ID=probe-nairobi-hybrid
+      - API_URL=http://hybrid-api:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=hybrid_dry_run_secret
+      - PROBE_INTERVAL=5
+      - COUNTRY=KE
+      - REGION=Nairobi
+    depends_on:
+      - fiber-api
+    networks:
+      - probe-net
+    restart: on-failure

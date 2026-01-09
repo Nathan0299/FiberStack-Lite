@@ -1,0 +1,74 @@
+name: Probe Soak Test (Nightly)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM UTC daily
+  workflow_dispatch:  # Manual trigger
+
+env:
+  PROMETHEUS_URL: http://localhost:9090
+
+jobs:
+  soak-test:
+    runs-on: self-hosted
+    timeout-minutes: 1500  # 25 hours
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start Soak Stack
+        working-directory: fiber-probe
+        run: |
+          docker compose -f docker-compose.soak.yml up -d
+          sleep 30  # Wait for containers
+
+      - name: Run 24h Soak Monitor
+        working-directory: fiber-probe
+        run: |
+          chmod +x scripts/soak_monitor.sh
+          timeout 86400 ./scripts/soak_monitor.sh || true
+
+      - name: Analyze Results
+        working-directory: fiber-probe
+        run: |
+          # Memory delta check
+          RSS_START=$(cat /tmp/rss_start.txt 2>/dev/null || echo "0")
+          RSS_END=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=probe_memory_rss_bytes/1e6" | jq -r '.data.result[0].value[1]')
+          DELTA=$(echo "$RSS_END - $RSS_START" | bc)
+          echo "Memory delta: ${DELTA}MB"
+          if [ "$(echo "$DELTA > 5" | bc -l)" -eq 1 ]; then
+            echo "::error::Memory leak detected: ${DELTA}MB growth"
+            exit 1
+          fi
+
+          # FD stability check
+          FD_COUNT=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=probe_open_fds" | jq -r '.data.result[0].value[1]')
+          if [ "$FD_COUNT" -gt 100 ]; then
+            echo "::error::FD leak detected: $FD_COUNT open"
+            exit 1
+          fi
+
+          # Compression CPU guard
+          if [ "$COMPRESSION_ENABLED" = "true" ]; then
+            CPU_RATE=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=rate(process_cpu_seconds_total[24h])" | jq -r '.data.result[0].value[1]')
+            if [ "$(echo "$CPU_RATE > 0.05" | bc -l)" -eq 1 ]; then
+              echo "::error::CPU drift exceeded with compression"
+              exit 1
+            fi
+          fi
+
+          echo "All soak tests passed"
+
+      - name: Cleanup
+        if: always()
+        working-directory: fiber-probe
+        run: docker compose -f docker-compose.soak.yml down -v
+
+      - name: Upload Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-logs
+          path: |
+            fiber-probe/logs/

@@ -1,0 +1,17 @@
+# Edge Probe
+# Deploy on physical device or VM in target location
+
+services:
+  edge-probe:
+    build:
+      context: ../../../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    environment:
+      - API_URL=${REGIONAL_API_URL}
+      - FEDERATION_TOKEN_CLOUD=${FEDERATION_SECRET}
+      - NODE_ID=${NODE_ID}
+      - REGION=${REGION}
+      - COUNTRY=${COUNTRY}
+      - INTERVAL=30
+      - LOG_LEVEL=INFO
+    restart: on-failure

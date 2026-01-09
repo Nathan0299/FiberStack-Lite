@@ -1,0 +1,79 @@
+# Central Aggregator
+# Deploy on Cloud VPS (e.g., AWS, DigitalOcean)
+
+services:
+  fiber-db:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=fiberstack
+    volumes:
+      - fiber-db-data:/var/lib/postgresql/data
+    networks:
+      - fiber-network
+
+  fiber-redis:
+    image: redis:7-alpine
+    networks:
+      - fiber-network
+
+  fiber-api:
+    build:
+      context: ../../../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - FEDERATION_SECRET=${FEDERATION_SECRET}
+      - NODE_ROLE=central
+      - REGION_VALIDATION=strict
+      - ALLOWED_REGIONS=gh-accra,ng-lagos,ke-nairobi
+      - ETL_QUEUE_KEY=fiber:etl:queue
+      - ENV=prod
+    ports:
+      - "8000:8000"
+    depends_on:
+      - fiber-db
+      - fiber-redis
+    networks:
+      - fiber-network
+
+  fiber-etl:
+    build:
+      context: ../../../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    environment:
+      - DB_HOST=fiber-db
+      - REDIS_URL=redis://fiber-redis:6379/0
+      - ENV=prod
+    depends_on:
+      - fiber-db
+      - fiber-redis
+    networks:
+      - fiber-network
+
+  grafana:
+    build:
+      context: ../../../
+      dockerfile: fiber-deploy/docker/Dockerfile.grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+      - DB_HOST=fiber-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=fiberstack
+    depends_on:
+      - fiber-db
+    networks:
+      - fiber-network
+
+volumes:
+  fiber-db-data:
+
+networks:
+  fiber-network:
+    driver: bridge

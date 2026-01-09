@@ -1,0 +1,155 @@
+version: "3.8"
+
+services:
+  fiber-api:
+    image: fiberstack/api:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000" # Bind to localhost (Reverse Proxy required)
+    env_file: .env.production
+    depends_on:
+      - fiber-db
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fiber-dashboard:
+    image: fiberstack/dashboard:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80" # Bind to localhost
+    env_file: .env.production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fiber-etl:
+    image: fiberstack/etl:latest
+    restart: unless-stopped
+    env_file: .env.production
+    depends_on:
+      - fiber-db
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fiber-db:
+    image: timescale/timescaledb:latest-pg15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - fiber-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432" # SECURITY: Localhost only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes # Persistence
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # Data Protection: Daily Backup Sidecar
+  db-backup:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+      - fiber-data:/var/lib/postgresql/data:ro
+    environment:
+      - PGHOST=fiber-db
+      - PGUSER=${DB_USER}
+      - PGPASSWORD=${DB_PASS}
+      - SCHEDULE=@daily
+    # Simple cron simulation or use a dedicated backup image
+    # For MVP: Sleep loop
+    command: >
+      /bin/sh -c "
+        echo 'Backup service started...';
+        while true; do
+          timestamp=$(date +%Y%m%d_%H%M%S);
+          echo \"Taking backup at $timestamp...\";
+          pg_dump -h fiber-db -U ${DB_USER} -d ${DB_NAME} -Fc > /backups/fiberstack_$timestamp.dump;
+          # Rate limit: 24h (86400s)
+          sleep 86400;
+        done
+      "
+
+  # Observability Layer (Local Only)
+  grafana:
+    build:
+      context: ../../../..  # Project Root to access fiber-deploy/grafana
+      dockerfile: fiber-deploy/docker/Dockerfile.grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000" # NETWORK BOUNDARY: Not externally routable
+    volumes:
+      - grafana_data:/var/lib/grafana # STATE POLICY: Persistent but Disposable (Sessions/Prefs)
+    environment:
+      # Security: Secrets injected at runtime
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      # Database Connection (Used by datasources/timescaledb.yaml)
+      - DB_HOST=fiber-db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    depends_on:
+      - fiber-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  fiber-data:
+  grafana_data:

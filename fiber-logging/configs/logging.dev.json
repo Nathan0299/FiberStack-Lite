@@ -5,23 +5,36 @@
         "standard": {
             "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
         },
-        "json": {
-            "class": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(name)s %(levelname)s %(message)s"
+        "detailed": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s"
         }
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "level": "INFO",
+            "level": "DEBUG",
             "formatter": "standard",
             "stream": "ext://sys.stdout"
         }
     },
     "root": {
-        "level": "INFO",
+        "level": "DEBUG",
         "handlers": [
             "console"
         ]
+    },
+    "loggers": {
+        "fiber-api": {
+            "level": "INFO"
+        },
+        "fiber-etl": {
+            "level": "INFO"
+        },
+        "fiber-probe": {
+            "level": "INFO"
+        },
+        "fiber-dashboard": {
+            "level": "INFO"
+        }
     }
 }

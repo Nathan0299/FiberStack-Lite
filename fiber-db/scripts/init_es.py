@@ -1,11 +1,17 @@
 import os
 import time
 import requests
-import logging
+import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("init_es")
+# Centralized logging (entrypoint pattern)
+sys.path.insert(0, '/app/fiber-logging/src')
+try:
+    from logger import get_logger
+    logger = get_logger("fiber-etl", env=os.getenv("ENV", "dev"))
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("fiber-etl")
 
 ES_URL = os.getenv("ELASTIC_URL", "http://localhost:9200")
 

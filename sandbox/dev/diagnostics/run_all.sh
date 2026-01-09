@@ -1,12 +1,21 @@
 #!/bin/bash
+set -e
 
-echo "=== FiberStack Sandbox Diagnostics ==="
+echo "=== FiberStack Diagnostics ==="
 
-python3 diagnostics/check_api.py
-python3 diagnostics/check_timescale.py
-python3 diagnostics/check_elastic.py
-python3 diagnostics/check_etl.py
-python3 diagnostics/check_probe.py
-python3 diagnostics/check_dashboard.py
+# Detect running API container
+if docker ps --format '{{.Names}}' | grep -q "^fs-api-sandbox$"; then
+    CONTAINER="fs-api-sandbox"
+elif docker ps --format '{{.Names}}' | grep -q "^fiber-api$"; then
+    CONTAINER="fiber-api"
+else
+    echo "❌ Error: No running API container found (checked 'fs-api-sandbox' and 'fiber-api')"
+    exit 1
+fi
 
-echo "=== Done ==="
+echo "Executing internal checks inside container: $CONTAINER"
+
+# Pipe the python script into the container to execute it
+cat sandbox/dev/diagnostics/check_network.py | docker exec -i $CONTAINER python -
+
+echo "=== All Checks Passed ==="

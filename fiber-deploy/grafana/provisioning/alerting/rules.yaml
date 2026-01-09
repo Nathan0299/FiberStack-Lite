@@ -1,0 +1,217 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: 'Infrastructure Health'
+    folder: 'FiberStack'
+    interval: 1m
+    rules:
+      # -----------------------------------------------------------------------
+      # 1. Node Down (Critical)
+      # Logic: Max(time) for a node is older than 5 minutes (300s).
+      # -----------------------------------------------------------------------
+      - uid: 'node-down-crit'
+        title: 'Node Down'
+        condition: 'C' # The threshold check
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 600, to: 0 } # Look back 10m
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT node_id, extract(epoch from now() - max(time)) as lag_seconds FROM metrics WHERE time > now() - interval '10 minutes' GROUP BY node_id"
+              format: 'table'
+          - refId: 'B' # Reduce to time series (if needed) or direct check. 
+            # For multi-dimensional SQL alerting in Grafana, 'Classic Condition' is often easiest, 
+            # but 'Reduce' + 'Threshold' is better for labels.
+            # Using Reduce 'Last' of lag_seconds
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last'
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [300] } }] # > 5 minutes
+        for: 5m # Flap prevention: Must be down for 5m strict
+        labels:
+          severity: 'critical'
+          tier: 'edge'
+          service: 'fiberstack'
+        annotations:
+          summary: 'Node {{ $labels.node_id }} is Down'
+          description: 'Node has not reported metrics for > 5 minutes. Lag: {{ $values.B }}s'
+          impact: 'Blind spot in network coverage; potential site outage.'
+          runbook_url: 'https://docs.fiberstack.internal/troubleshooting/node_down'
+
+      # -----------------------------------------------------------------------
+      # 2. High Latency (Warning)
+      # Logic: Average latency > 100ms over last 5m
+      # -----------------------------------------------------------------------
+      - uid: 'latency-high-warn'
+        title: 'High Latency'
+        condition: 'C'
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT node_id, avg(latency_ms) as avg_lat FROM metrics WHERE time > now() - interval '5 minutes' GROUP BY node_id"
+              format: 'table'
+          - refId: 'B'
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last' # Last value of the generic query result
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [100] } }]
+        for: 5m
+        labels:
+          severity: 'warning'
+          tier: 'edge'
+          service: 'fiberstack'
+        annotations:
+          summary: 'High Latency on {{ $labels.node_id }}'
+          description: 'Average latency is {{ $values.B }}ms (Threshold: 100ms)'
+          impact: 'Degraded User Experience; Voice/Video jitter.'
+          runbook_url: 'https://docs.fiberstack.internal/troubleshooting/high_latency'
+
+      # -----------------------------------------------------------------------
+      # 3. Packet Loss (Critical)
+      # Logic: Packet Loss > 1% over last 5m
+      # -----------------------------------------------------------------------
+      - uid: 'loss-crit'
+        title: 'High Packet Loss'
+        condition: 'C'
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT node_id, avg(packet_loss) as avg_loss FROM metrics WHERE time > now() - interval '5 minutes' GROUP BY node_id"
+              format: 'table'
+          - refId: 'B'
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last'
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [1.0] } }]
+        for: 5m
+        labels:
+          severity: 'critical'
+          tier: 'edge'
+          service: 'fiberstack'
+        annotations:
+          summary: 'High Packet Loss on {{ $labels.node_id }}'
+          description: 'Packet Loss is {{ $values.B }}% (Threshold: 1.0%)'
+          impact: 'Severe connectivity issues; application timeouts.'
+          runbook_url: 'https://docs.fiberstack.internal/troubleshooting/packet_loss'
+
+      # -----------------------------------------------------------------------
+      # 4. Ghana Region - High Latency (Warning at 80ms)
+      # -----------------------------------------------------------------------
+      - uid: 'latency-gh-warn'
+        title: 'Ghana High Latency'
+        condition: 'C'
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT m.node_id, avg(m.latency_ms) as avg_lat FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > now() - interval '5 minutes' AND LOWER(n.country) = 'gh' GROUP BY m.node_id"
+              format: 'table'
+          - refId: 'B'
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last'
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [80] } }]
+        for: 5m
+        labels:
+          severity: 'warning'
+          region: 'gh-accra'
+        annotations:
+          summary: 'Ghana node {{ $labels.node_id }} latency {{ $values.B }}ms'
+
+      # -----------------------------------------------------------------------
+      # 5. Nigeria Region - High Latency (Warning at 100ms)
+      # -----------------------------------------------------------------------
+      - uid: 'latency-ng-warn'
+        title: 'Nigeria High Latency'
+        condition: 'C'
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT m.node_id, avg(m.latency_ms) as avg_lat FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > now() - interval '5 minutes' AND LOWER(n.country) = 'ng' GROUP BY m.node_id"
+              format: 'table'
+          - refId: 'B'
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last'
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [100] } }]
+        for: 5m
+        labels:
+          severity: 'warning'
+          region: 'ng-lagos'
+        annotations:
+          summary: 'Nigeria node {{ $labels.node_id }} latency {{ $values.B }}ms'
+
+      # -----------------------------------------------------------------------
+      # 6. Kenya Region - High Latency (Warning at 90ms)
+      # -----------------------------------------------------------------------
+      - uid: 'latency-ke-warn'
+        title: 'Kenya High Latency'
+        condition: 'C'
+        data:
+          - refId: 'A'
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: 'TimescaleDB'
+            model:
+              rawSql: "SELECT m.node_id, avg(m.latency_ms) as avg_lat FROM metrics m JOIN nodes n ON m.node_id = n.node_id WHERE m.time > now() - interval '5 minutes' AND LOWER(n.country) = 'ke' GROUP BY m.node_id"
+              format: 'table'
+          - refId: 'B'
+            datasourceUid: '__expr__'
+            model:
+              type: 'reduce'
+              expression: 'A'
+              reducer: 'last'
+          - refId: 'C'
+            datasourceUid: '__expr__'
+            model:
+              type: 'threshold'
+              expression: 'B'
+              conditions: [{ evaluator: { type: 'gt', params: [90] } }]
+        for: 5m
+        labels:
+          severity: 'warning'
+          region: 'ke-nairobi'
+        annotations:
+          summary: 'Kenya node {{ $labels.node_id }} latency {{ $values.B }}ms'

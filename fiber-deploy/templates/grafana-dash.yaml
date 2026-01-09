@@ -1,0 +1,33 @@
+# FiberStack Grafana Service Template
+# Copy this into your docker-compose.yml and ensure ./grafana/* files exist.
+
+services:
+  grafana:
+    image: grafana/grafana:10.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000" # Localhost only (use Nginx for public)
+    volumes:
+      # Data Persistence
+      - grafana_data:/var/lib/grafana
+      # Provisioning: Datasources & Dashboard Providers
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      # Dashboard JSON Files
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json
+    environment:
+      # Secure Credentials (passed from .env)
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin} 
+      # Allow embedding if needed
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      # DB Connection Vars (used in datasources/timescaledb.yaml via interpolation)
+      - DB_HOST=fiber-db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    depends_on:
+      - fiber-db
+
+volumes:
+  grafana_data:

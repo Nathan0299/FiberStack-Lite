@@ -1,0 +1,263 @@
+version: '3.8'
+
+services:
+  # --- SHARED SERVICES ---
+  fiber-db:
+    image: timescale/timescaledb:latest-pg14
+    container_name: fiber-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres # We will create fiber_cloud and fiber_local via script
+    volumes:
+      - fiber_hybrid_db_data:/var/lib/postgresql/data
+      - ../fiber-db/schemas:/docker-entrypoint-initdb.d
+    networks:
+      - fiber-hybrid-net
+    ports:
+      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fiber-es:
+    image: elasticsearch:8.11.0
+    container_name: fiber-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - fiber_hybrid_es_data:/usr/share/elasticsearch/data
+    networks:
+      - fiber-hybrid-net
+    ports:
+      - "9200:9200"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '.*' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # --- CLOUD TIER (Fail-Closed Policy) ---
+  fiber-redis-cloud:
+    image: redis:7-alpine
+    container_name: fiber-redis-cloud
+    networks:
+      - fiber-hybrid-net
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fiber-api-cloud:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    container_name: fiber-api-cloud
+    environment:
+      - ENV=cloud
+      - NODE_ROLE=central
+      - REGION_VALIDATION=strict
+      - ALLOWED_REGIONS=gh-accra,ng-lagos,ke-nairobi,us-virginia,jp-tokyo
+      - DB_HOST=fiber-db
+      - DB_NAME=fiber_cloud
+      - REDIS_URL=redis://fiber-redis-cloud:6379/0
+      - REDIS_POLICY=fail-closed
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - FEDERATION_SECRET=sandbox_secret
+      - USER_CREDENTIALS=admin:admin,operator:operator_password,probe_user:probe_password,testuser:testpass
+      - FORCE_COLOR=1
+    ports:
+      - "8000:8000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis-cloud:
+        condition: service_healthy
+    networks:
+      - fiber-hybrid-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  fiber-etl-cloud:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    container_name: fiber-etl-cloud
+    environment:
+      - ENV=cloud
+      - DB_HOST=fiber-db
+      - DB_NAME=fiber_cloud
+      - REDIS_URL=redis://fiber-redis-cloud:6379/0
+      - ELASTIC_URL=http://fiber-es:9200
+      - FORCE_COLOR=1
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis-cloud:
+        condition: service_healthy
+      fiber-es:
+        condition: service_healthy
+    networks:
+      - fiber-hybrid-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  probe-remote:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: probe-remote
+    environment:
+      - NODE_ID=probe-remote-01
+      - API_URL=http://fiber-api-cloud:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_INTERVAL=5
+      - COUNTRY=US
+      - REGION=Virginia
+    depends_on:
+      - fiber-api-cloud
+    networks:
+      - fiber-hybrid-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+
+  # --- LOCAL TIER (Fail-Open Policy) ---
+  fiber-redis-local:
+    image: redis:7-alpine
+    container_name: fiber-redis-local
+    networks:
+      - fiber-hybrid-net
+    ports:
+      - "6380:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fiber-api-local:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.api
+    container_name: fiber-api-local
+    environment:
+      - ENV=local
+      - NODE_ROLE=edge
+      - REGION_VALIDATION=lenient
+      - DB_HOST=fiber-db
+      - DB_NAME=fiber_local
+      - REDIS_URL=redis://fiber-redis-local:6379/0
+      - REDIS_POLICY=fail-open
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - FEDERATION_SECRET=sandbox_secret
+      - USER_CREDENTIALS=admin:admin,operator:operator_password,probe_user:probe_password,testuser:testpass
+      - FORCE_COLOR=1
+    ports:
+      - "8001:8000"
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis-local:
+        condition: service_healthy
+    networks:
+      - fiber-hybrid-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  fiber-etl-local:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.etl
+    container_name: fiber-etl-local
+    environment:
+      - ENV=local
+      - DB_HOST=fiber-db
+      - DB_NAME=fiber_local
+      - REDIS_URL=redis://fiber-redis-local:6379/0
+      - ELASTIC_URL=http://fiber-es:9200
+      - FORCE_COLOR=1
+    depends_on:
+      fiber-db:
+        condition: service_healthy
+      fiber-redis-local:
+        condition: service_healthy
+      fiber-es:
+        condition: service_healthy
+    networks:
+      - fiber-hybrid-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  probe-local:
+    build:
+      context: ../
+      dockerfile: fiber-deploy/docker/Dockerfile.probe
+    container_name: probe-local
+    environment:
+      - NODE_ID=probe-local-01
+      - API_URL=http://fiber-api-local:8000/api/ingest
+      - FEDERATION_TOKEN_CLOUD=sandbox_secret
+      - PROBE_INTERVAL=2
+      - COUNTRY=JP
+      - REGION=Tokyo
+    depends_on:
+      - fiber-api-local
+    networks:
+      - fiber-hybrid-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+
+networks:
+  fiber-hybrid-net:
+    driver: bridge
+
+volumes:
+  fiber_hybrid_db_data:
+  fiber_hybrid_es_data:

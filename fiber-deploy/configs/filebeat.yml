@@ -1,0 +1,87 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+
+# Environment-Aware Processing
+processors:
+  # 1. Decode JSON if possible
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      process_array: false
+      max_depth: 1
+      overwrite_keys: true
+      add_error_key: true
+  
+  # 2. Trace ID Extraction (Unified Schema)
+  - if:
+      has_fields: ["trace.id"]
+    then:
+      # Already in correct format (log_lib)
+      - drop_fields:
+          fields: ["trace_id"] # clean up potentially legacy field
+          ignore_missing: true
+    else:
+      # Try legacy trace_id or fallback
+      - if:
+          has_fields: ["trace_id"]
+        then:
+          - rename:
+              fields:
+                - from: "trace_id"
+                  to: "trace.id"
+        else:
+           - add_fields:
+               target: "trace"
+               fields:
+                 id: "unknown"
+
+  # 3. Security Sanitization
+  - drop_fields:
+      fields: ["password", "token", "secret", "api_key", "authorization"]
+      ignore_missing: true
+
+# Output configuration
+output.elasticsearch:
+  hosts: ["${ES_HOST:elasticsearch:9200}"]
+  index: "fiber-logs-%{+yyyy.MM.dd}"
+  bulk_max_size: 50
+  backoff.init: 1s
+  backoff.max: 60s
+  
+  # Retry indefinitely (resilience)
+  max_retries: -1
+
+# Dead-letter queue (Resilience)
+queue.disk:
+  path: /var/lib/filebeat/data
+  max_size: 100MB
+  segment_size: 10MB
+
+# ILM setup
+setup.ilm.enabled: true
+setup.ilm.policy_name: "fiber-logs-policy"
+setup.ilm.policy_file: "/usr/share/filebeat/ilm-policy.json"
+setup.template.name: "fiber-logs"
+setup.template.pattern: "fiber-logs-*"
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 0
+  index.mapping.ignore_above: 256 # Default, relying on short IDs upstream
+
+# Monitoring
+monitoring.enabled: true
+http.enabled: true
+http.port: 5066
+http.host: 0.0.0.0
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7

@@ -2,6 +2,23 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# =============================================================================
+# Environment Contract
+# =============================================================================
+# Required:
+#   REDIS_URL    - Redis connection (e.g., redis://redis:6379/0)
+#   DB_HOST      - TimescaleDB host
+#   DB_USER      - Database user
+#   DB_PASS      - Database password
+#   DB_NAME      - Database name
+#
+# Optional:
+#   ENV          - Environment for logging (default: dev)
+#
+# Deferred (Day 50+):
+#   - Non-root user
+# =============================================================================
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -10,10 +27,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY fiber-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code (will be overridden by volume in dev, but good for prod build)
+# Copy source code
 COPY fiber-api /app/fiber-api
 COPY fiber-logging /app/fiber-logging
 

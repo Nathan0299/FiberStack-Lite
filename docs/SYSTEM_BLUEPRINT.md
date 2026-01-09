@@ -85,6 +85,51 @@ graph TB
     style LOG fill:#95A5A6
 ```
 
+---
+
+## Multi-Cluster Architecture
+
+### Federation Flow
+
+```mermaid
+sequenceDiagram
+    participant Probe as Edge Probe
+    participant Regional as Regional Hub
+    participant Central as Central API
+    participant ETL as ETL Worker
+    participant DB as TimescaleDB
+
+    Probe->>Regional: POST /api/push
+    Regional->>Regional: Buffer (Redis LIST)
+    Regional->>Central: POST /api/ingest (batch)
+    Central->>ETL: Queue
+    ETL->>DB: Insert
+```
+
+### Buffer Semantics
+
+| Parameter | Value | Location |
+|-----------|-------|----------|
+| **TTL** | 24 hours | Redis `EXPIRE` on `fiber:buffer:*` keys |
+| **Max Depth** | 100,000 messages | ENV `BUFFER_MAX_DEPTH` |
+| **Overflow** | Drop oldest (FIFO eviction) | ETL `drain_buffer()` |
+| **Flush Trigger** | Every 30s OR 500 messages | Cron + threshold |
+| **Retry Policy** | 3 attempts, exponential backoff (2^n s, max 60s) | `replay_batch()` |
+
+### Cluster Roles
+
+| Role | Responsibilities | Failure Mode |
+|------|------------------|---------------|
+| **Central** | Aggregation, storage, alerting | Regional buffers 24h |
+| **Regional** | Local ingestion, batching | Fallback to Central |
+| **Edge** | Metric collection | Memory only |
+
+### Data Guarantees
+
+- **Ordering**: Best-effort within batch, not across batches
+- **Delivery**: At-least-once (idempotency via `node_id + timestamp`)
+- **Loss**: Possible only on buffer overflow (logged, alerted)
+
 ### Service Boundaries
 
 | Service | Responsibility | Never Does |
@@ -194,6 +239,37 @@ Response:
   "status": "accepted",
   "queued": true,
   "message_id": "uuid-here"
+}
+```
+
+**POST /api/ingest** (Federation Batch)
+```json
+Headers:
+  Authorization: Bearer <token>
+  X-Batch-ID: <uuid> (idempotency key)
+  X-Region-ID: <region> (optional)
+
+Request:
+{
+  "node_id": "region-hub-01",
+  "metrics": [
+    {
+      "node_id": "probe-gh-01",
+      "country": "GH",
+      "region": "Accra",
+      "latency_ms": 45.0,
+      "uptime_pct": 100,
+      "packet_loss": 0.0,
+      "timestamp": "2025-12-30T12:00:00Z"
+    }
+  ]
+}
+
+Response:
+{
+  "status": "accepted",
+  "message": "Queued 5 metrics",
+  "data": {"batch_id": "...", "source_region": "gh-accra"}
 }
 ```
 
@@ -535,6 +611,113 @@ Distributed, Multi-Region
 
 **MVP Regions:** Ghana, Nigeria, Kenya  
 **Future Expansion:** South Africa, Egypt, Tanzania, Uganda
+
+---
+
+## Detailed Data Flows
+
+### 1. Authentication Flow (Probe → API)
+
+```mermaid
+sequenceDiagram
+    participant Probe
+    participant API
+    participant Cache
+    participant DB
+
+    Probe->>API: POST /api/push (Bearer Token)
+    API->>Cache: Check Token Validity (Redis)
+    alt Token Valid (Hit)
+        Cache-->>API: OK (Roles/Scopes)
+    else Token Missing/Expired
+        API->>DB: Verify & Fetch Roles
+        DB-->>API: User Data
+        API->>Cache: Cache Token (TTL 15m)
+    end
+    API-->>Probe: 202 Accepted / 401 Unauthorized
+```
+
+### 2. Ingestion & Rate Limiting Flow
+
+```mermaid
+sequenceDiagram
+    participant Probe
+    participant Guard as Global Guard (Local)
+    participant RateLimiter as Distributed Bucket (Redis)
+    participant Queue as Redis Queue
+
+    Probe->>Guard: Metric Payload
+    alt Guard Full (>5000/s)
+        Guard-->>Probe: 503 System Overload
+    else Guard OK
+        Guard->>RateLimiter: Consume Token (User/IP)
+        alt Bucket Empty
+            RateLimiter-->>Probe: 429 Too Many Requests
+        else Token Available
+            RateLimiter->>Queue: Enqueue Metric
+            Queue-->>Probe: 202 Accepted
+        end
+    end
+```
+
+### 3. Alerting Flow
+
+```mermaid
+sequenceDiagram
+    participant ETL
+    participant DB as TimescaleDB
+    participant AlertEngine
+    participant Slack
+
+    ETL->>DB: Insert Metric
+    ETL->>AlertEngine: Check Thresholds (e.g. Latency > 500ms)
+    alt Threshold Breached
+        AlertEngine->>AlertEngine: Check Alert Rate Limit (Token Bucket)
+        alt Rate Limit OK
+            AlertEngine->>Slack: Post Webhook (Alarm)
+        else Rate Limit Exceeded
+            AlertEngine->>ETL: Suppress Notification
+        end
+    end
+```
+
+---
+
+## Operator Runbooks
+
+> [!IMPORTANT]
+> These procedures are for Level 2+ support engineers.
+
+### 1. Chaos Mode / Outage Response
+
+**Scenario**: `REDIS_DOWN` (Redis Unreachable)
+- **Behavior**: API falls back to `Local Leaky Bucket` for rate limiting. Auth checks may fail closed (unless fail-open configured for Ingestion).
+- **Action**: 
+  1. Verify Redis pod status: `kubectl get pods -l app=fiber-redis`
+  2. Check API logs for `X-RateLimit-Policy: local`
+  3. Restart Redis: `kubectl rollout restart deployment fiber-redis`
+
+**Scenario**: `ELASTIC_DOWN` (Logs blocked)
+- **Behavior**: API/ETL continue functioning. Logs are buffered locally or dropped (Fail Safe).
+- **Action**:
+  1. Check disk space on ES nodes.
+  2. Unpause ES: `docker unpause fiber-es` (if paused for testing).
+  3. Verify `fiber-filebeat` connectivity.
+
+### 2. Data Backfill
+
+**Scenario**: Recovering gaps from Edge Buffer.
+- **Action**: 
+  1. Trigger Probe replay: `curl -X POST /admin/probe/{id}/replay` (Future).
+  2. Monitor `ingest_lag_seconds` metric.
+
+### 3. Secret Rotation
+
+**Scenario**: `FEDERATION_SECRET` compromised.
+- **Action**:
+  1. Update Secret in Vault/K8s.
+  2. Redeploy API Gateway: `kubectl rollout restart deployment fiber-api`
+  3. Update Edge Probes (manual or config management).
 
 ---
 

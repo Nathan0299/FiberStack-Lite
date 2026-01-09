@@ -3,12 +3,19 @@ import aiohttp
 import random
 import time
 import uuid
-import logging
+import os
+import sys
 from datetime import datetime, timezone
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("load_gen")
+# Centralized logging (entrypoint pattern)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../fiber-logging/src'))
+try:
+    from logger import get_logger
+    logger = get_logger("fiber-probe", env=os.getenv("ENV", "sandbox"))
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger = logging.getLogger("fiber-probe")
 
 API_URL = "http://localhost:8000/api/push"
 NUM_PROBES = 5

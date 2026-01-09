@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'FiberStack Dashboards'
+    orgId: 1
+    folder: 'FiberStack'
+    type: file
+    disableDeletion: false
+    editable: true # Allow edits for exploration, but encourage Git flow
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

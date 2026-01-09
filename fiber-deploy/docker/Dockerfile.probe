@@ -1,0 +1,34 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# =============================================================================
+# Environment Contract
+# =============================================================================
+# Required:
+#   API_URL      - Metrics push endpoint (e.g., http://api:8000/api/push)
+#   NODE_ID      - Unique probe identifier (UUID)
+#   COUNTRY      - ISO country code (e.g., GH, NG, KE)
+#   REGION       - Region name (e.g., Accra, Lagos, Nairobi)
+#
+# Optional:
+#   INTERVAL     - Seconds between metrics (default: 60)
+#   ENV          - Environment for logging (default: dev)
+#   MAX_RETRIES  - Retry attempts on failure (default: 3)
+#
+# Deferred (Day 50+):
+#   - Non-root user for security hardening
+#   - Healthcheck endpoint
+# =============================================================================
+
+# Copy requirements from probe directory
+COPY fiber-probe/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source
+COPY fiber-probe /app/fiber-probe
+COPY fiber-logging /app/fiber-logging
+
+ENV PYTHONPATH=/app:/app/fiber-probe/src
+
+CMD ["python", "fiber-probe/src/main.py"]
